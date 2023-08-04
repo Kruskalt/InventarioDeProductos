@@ -1,0 +1,588 @@
+
+= Base de datos : Trabajo practico
+
+Nazareno Avalos <codigorap13@gmail.com>; Patricio Castillo
+<patriciojcastillo@gmail.com>; Ivan Sanchez <ivansncz11@gmail.com>
+{docdate}. Docentes Hernan Rondelli y Daniel Bertaccini
+:title-page:
+:numbered:
+:source-highlighter: coderay
+:tabsize: 4
+
+
+
+== Introducción
+El proyecto se trata de una aplicacion para asignar turnos, mantener toda la información de los pacientes,controlando que los turnos sean asignados correctamente.
+Además se lleva un registro de les pacientes atendides en el mes, les cuales pueden tener
+distintas obras sociales. Es necesario poder administrar las liquidaciones mensuales de
+las atenciones, realizadas por cada médique. Puede haber pacientes que no posean obra
+social.
+
+
+== Descripcion
+La aplicación permite, mediante un menu interactivo, seleccionar determinadas opciones. Cada opción ejecuta una parte especifica del programa
+  
+  Seleccione una opcion:
+	
+	0-Crear Base de Datos 
+	
+	1-Crear Tablas (Se crean las tablas en la base de datos, que utilizará la aplicación para almacenar la información requerida)
+	
+	2-Cargar Datos (Se cargar los datos a la base con informacion de pacientes,medicos,agenda de medicos,)
+	
+	3-Agregar PK's y FK's (Establece las PK's y FK's solicitadas )
+	
+	4-Eliminar PK's y FK's (Elimina todas las PK's y FK's existentes)
+	
+	5-Agregar Stored Procedures y Triggers (Carga la lógica de la aplicación los Stored Procedures y Triggers solicitados )
+	
+	6-cancelacion turno (solicita un intervalo de fecha y cancela los turnos dentro de ese intervalo)
+	
+	7-Avisos sobre Turnos Por eMail (cargo los emails segun la situacion del paciente ej: perdida de turno , aviso de turno reservado, si se cancelo el turno)
+	
+	8-Reserva de turnos (el sistema solicita dni del medico , fecha , horario para reservar un turno al paciente)
+	
+	9-turnos atendidos (el sistema solicita el nro del turno para cambiar su estado a atendido para esto tienen q coincidir la fechas)
+	
+	10-generacion de turnos (genera todos los turnos disponibles en determinado mes del año que se ingresa)
+
+	Salir
+
+
+
+
+
+== Problemas en el desarrollo de la aplicacion
+*Uno de los primeros errores se soluciono en el commit
+ "habia un error al referencias una pk dni paciente que no estaba definida como tal, solo dejamos como pk al numero de paciente"*
+, donde una foreign key hacia referencia a dni_medique y no era una primary key, esto llevo 
+un tiempo para que nos dieramos cuenta que las fk no  necesariamente eran todas las referencia a columnas de otras tablas.
+
+*commit = "tenia que cambiar el orden de las llamadas y un medico atendia el mismo dia asi que se cambio eso"*, en este commit teniamos el problema
+de llamar a creacion de tablas que sus fk hacian referencia a pk de tablas que se creaban despues. Ademas habia un medico que atendia dos veces el mismo dia
+y hacia que se repitiera la pk.
+
+* Error en el GOPATH al importar package  otros programas para el uso en el programa pincipal main.
+la solucion fue ejecutar go mod init  y luego go mod tidy.
+
+*Dos pacientes queriendo reservar el mismo turno*
+Para solucionar este error se procedio a cambiar el aislamiento de las transacciones en reserva de turno, a SERIALIZABLE para que adopten una ejecucion
+en forma de serie y no haya una incosistencia de datos.
+
+*Error al completar la reserva de turno*
+Para evitar transacciones incompletas, se llevo a cabo un bloque de EXCEPTION que nos permita agarrar todas las excepciones que ocurran durante la transaccion
+y llevar a cabo un ROOLLBACK en tal caso. Y en caso de exito se haga un COMMIT.
+
+
+== Implementacion
+1.*interfaz*
+[source , go]
+----
+package main
+
+import "fmt"
+import sqlSp "tpp/SqlSp"
+import sql "tpp/SqlDatos"
+import sp "tpp/LlamarSp"
+import "time"
+func main() {
+	seguir := true
+	var opcion string
+	for seguir  {
+		mostrarOpciones()
+		fmt.Scanf("%s,\n",&opcion)
+		seguir = opcionElegida(opcion)
+		
+	}
+}
+func mostrarOpciones() {
+	fmt.Println("Seleccione una opcion:")
+	fmt.Println("0-Crear Base de Datos")
+	fmt.Println("1-Crear Tablas")
+	fmt.Println("2-Cargar Datos")
+	fmt.Println("3-Agregar PK's y FK's")
+	fmt.Println("4-Eliminar PK's y FK's")
+	fmt.Println("5-Agregar Stored Procedures y Triggers")
+	fmt.Println("6-cancelacion turno")
+	fmt.Println("7-Avisos sobre Turnos Por eMail")
+	fmt.Println("8-Reserva de turnos")
+	fmt.Println("9-turnos atendidos")
+	fmt.Println("10-generacion de turnos")
+
+	fmt.Println("Salir")
+	fmt.Printf("Opción: ")
+}
+
+func opcionElegida (opcion string) bool {
+	if opcion== "0" {
+		sql.CreateDatabase()
+		time.Sleep(2*time.Second)
+		return true
+		}
+	
+	if opcion== "1" {
+		sql.Creartablas()
+		time.Sleep(2*time.Second)
+		return true
+		}
+		
+	if opcion== "2" {
+		sql.AgregarPk_y_Fk()
+		time.Sleep(2*time.Second)
+		return true
+		}
+	
+	if opcion== "3" {
+		sql.EliminarPk_y_Fk()
+		time.Sleep(2*time.Second)
+		return true
+		}
+	
+	if opcion== "4" {
+		sql.CargarDatosATablas()
+		time.Sleep(2*time.Second)
+		return true
+		}
+	
+	if opcion== "5" {
+		sqlSp.CargarcancelarTurnos()
+		sqlSp.CargarTriggerCancelacion()
+		sqlSp.CargarTriggerReserva()
+		sqlSp.CargarRecordatorioReserva()
+		sqlSp.CargaravisoTurnoPerdido()
+		sqlSp.CargarReservadeTurnos()
+		sqlSp.CrearAtencionTurno()
+		sqlSp.CreargenerarTurnos()
+		
+		fmt.Println("Sp y triggers cargados exitosamente")
+		time.Sleep(2*time.Second)
+		return true
+		}	
+	
+	if opcion== "6" {
+		var dni int
+		var f_desde string
+		var f_hasta string 
+		fmt.Println("ingrese documento del medico")
+		fmt.Scanf("%d,\n",&dni)
+		fmt.Println("ingrese la fecha inicio yy-mm-dd")
+		fmt.Scanf("%s,\n",&f_desde)
+		fmt.Println("ingrese la fecha final del intervalo yy-mm-dd")
+		fmt.Scanf("%s,\n",&f_hasta)
+		sp.CancelarTurno(dni,f_desde,f_hasta);
+		time.Sleep(2*time.Second)
+		return true
+		}	
+	
+	if opcion== "7" {
+		sp.AvisosXEmail()
+		time.Sleep(2*time.Second)
+		return true
+		}
+		
+	if opcion== "8" {
+		var dniMedico int
+		var nroHClinica int
+		var fecha string
+		var hora string
+		fmt.Println("ingrese documento del medico")
+		fmt.Scanf("%d,\n",&dniMedico)
+		fmt.Println("ingrese numero historia Clinica")
+		fmt.Scanf("%d,\n",&nroHClinica)
+		fmt.Println("ingrese la fecha de reserva")
+		fmt.Scanf("%s,\n",&fecha)
+		fmt.Println("ingrese la hora de reserva")
+		fmt.Scanf("%s,\n",&hora)
+		sp.Reserva(nroHClinica,dniMedico,fecha,hora)
+		time.Sleep(2*time.Second)
+		return true
+		}	
+		
+	if opcion== "9" {
+		var nroTurno int
+		fmt.Println("ingrese el nro de turno atendido")
+		fmt.Scanf("%d,\n",&nroTurno)
+		sp.AtencionTurno(nroTurno)
+		time.Sleep(2*time.Second)
+		return true
+		}
+		
+		
+	if opcion== "10" {
+		var anio int
+		var mes int
+		fmt.Println("ingrese el anio")
+		fmt.Scanf("%d,\n",&anio)
+		fmt.Println("ingrese el mes")
+		fmt.Scanf("%d,\n",&mes)
+		sp.GenerarTurnos(anio,mes)
+		time.Sleep(2*time.Second)
+		return true
+		}
+		
+	if opcion== "salir" {
+		
+		return false
+		}
+		
+	
+
+	return true
+	}
+
+----
+2. *Procedure reserva*
+
+Este procedure recibe la historia clinica, el dni del medico y la fecha de reserva. Se declaran las variables medico,pacien, cobertura_aux
+y turno_id , donde se guardan los datos para poder ir trabajando durante la ejecucion. Dentro del begin, primero se validan que sean correctos
+ los datos de la historia clinica y el dni del medico, en caso de no ser correctos se devuelven mensajes de error. En segundo lugar una vez 
+ pasada esa seccion se valida si el paciente tiene obra social , en caso de tener una obra social, se hace una consulta de las obras sociales
+ que atiende el medico seleccionado y devolver un error si no atiende esa obra social. En tercer lugar se valida si la fecha del turno es valida
+ y si el estado del turno es disponible. En cuarto lugar se hace una consulta de los pacientes que hayan reservado mas de 4 veces y si el 
+ paciente se encuentra en esa lista , se emite un mensaje de error  por superar el limite de reservas (limite de reservas es 5). Por ultimo
+ se hace la consulta para saber si el paciente no tiene obra social , para actualizar la tabla de turnos de manera correcta y en caso de si tener
+ obra social se hace una consulta a la tabla cobertura  para saber cuanto de los gastos cubre la obra social del paciente. 
+
+[source , go]
+----
+func reservarTurno()  {
+	
+    db,err := sql.Open("postgres", "user=postgres host=localhost dbname=turnosmedicos sslmode=disable")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer db.Close()
+
+
+	_, err = db.Exec(`create or replace function reserva(h_clinica int , dni_medi int , fecha_reserva timestamp) returns boolean as $$
+						declare
+						aux boolean;
+						medico record;
+						pacien record;
+						turno_id record;
+
+						cobertura_aux  record;
+
+						begin
+							-- Validar el DNI del médico
+
+							select * into medico from medique where medique.dni_medique= dni_medi;
+							if not found then 
+								raise 'dni de medique no valido';
+							end if;
+
+							-- Validar el número de historia clínica del paciente
+
+							select * into pacien from paciente where paciente.nro_paciente=h_clinica;
+							if not found then
+								raise 'nro de historia clinica no valido';
+							end if;
+
+							-- Validar si el paciente tiene obra social y si el médico la atiende
+
+							if pacien.nro_obra_social is not null then
+								if pacien.nro_obra_social not in (select nro_obra_social from cobertura,medique where cobertura.dni_medique=medico.dni_medique)
+									then raise 'obra social de paciente no atendida por el medique';
+								end if;
+							end if;
+
+							-- Validar la disponibilidad del turno para el médico y fecha solicitados
+
+							if fecha_reserva not in(select fecha  from turno where turno.dni_medique=medico.dni_medique and turno.estado='disponible')
+								then raise 'turno inexistente o no disponible';
+							end if;
+						
+							-- Validar si el paciente ha superado el límite de reservas de turnos
+
+							if pacien.nro_paciente in (select nro_paciente from turno where estado='reservado' group by nro_paciente having count(estado)>4)
+								then raise 'supera limite de reserva de turnos';
+							end if;
+
+							select * INTO turno_id
+							from turno
+							where medico.dni_medique = turno.dni_medique
+							and turno.fecha = fecha_reserva
+							and turno.estado = 'disponible';
+
+							-- inicar transaccion
+							BEGIN 
+							--si dos personas quieren reservar al mismo tiempo
+							SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+
+							-- Actualizar el turno con la información de reserva
+
+								if pacien.nro_obra_social is  null then
+									-- Paciente sin obra social
+									update turno
+									set turno.nro_paciente = h_clinica,
+										monto_paciente= medico.monto_consulta_privada,
+										monto_obra_social = 0 ,
+										estado='reservado'
+									where nro_turno = turno_id.nro_turno;
+
+								else
+								-- Paciente con obra social
+								
+									select * into cobertura_aux from cobertura where dni_medique=medico.dni_medique and pacien.nro_obra_social;
+									update turno
+									set turno.nro_paciente = h_clinica,
+										monto_paciente= cobertura_aux.monto_paciente,
+										monto_obra_social = cobertura_aux.monto_obra_social,
+										estado='reservado',
+										nro_obra_social_consulta = pacien.nro_obra_social
+									where nro_turno = turno_id.nro_turno;
+
+
+								end if;
+								--EN CASO DE EXITO SE APLICA EL CAMBIO
+								COMMIT;
+
+								return true;
+								EXCEPTION 
+									when others then 
+									ROOLLBACK;
+									return false;
+							END;
+						END;
+					$$ LANGUAGE plpgsql;
+
+
+
+
+
+
+
+`)
+		if err != nil {
+			log.Fatal(err)
+		}
+}
+----
+
+
+
+
+
+
+
+
+
+
+
+
+3. *Procedure  Liquidacion de obras sociales*
+
+Este procedure primero declara las varibles v_obra_social , v_cabecera , v_turno, v_desde y  v_hasta, que seran necesarias para obtener los distintos datos
+que vamos obteniendo de las consultas a la base de datos. Segundo, ingresa una tabla para cada obra social del mes actual , para diferenciar cada liquidacion
+de cabecera y poder asociar cada detalle de liquidacion de los pacientes a una cabecera.  En tercer lugar y mas importante del procedure, se lleva a cabo 
+el procedimiento de recorrer las liquidaciones de cabecera y corroborar que turnos coinciden con la obra social que figura en la cabecera actual, teniendo
+en cuenta que el mes y el año de los turnos sean los correspondientes al de la cabecera.  Una vez se cumplen estas condiciones,  se procede a insertar
+en la tabla liquidacion_detalle datos relacionados al turno actual y una referencia a la liquidacion cabecera a la cual pertenece. Por ultimo se suma
+al monto total de la cebecera el monto de obra social que figura en el turno.
+[source , go]
+----
+func liquidacion()  {
+	
+    db,err := sql.Open("postgres", "user=postgres host=localhost dbname=turnosmedicos sslmode=disable")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer db.Close()
+
+	_, err = db.Exec(`create or replace function liquidacion() returns trigger as $$
+					declare
+					
+					
+
+					v_obra_social obra_social%ROWTYPE;
+					v_cabecera liquidacion_cabecera%ROWTYPE;
+					v_turno turno%ROWTYPE;
+
+					v_desde date;
+					v_hasta date;
+
+					
+
+					begin
+						-- agregar las liquidaciones cabecera del mes
+
+						v_desde= (select  date_trunc('month', current_date));
+						v_hasta= (select (date_trunc('month', current_date) + interval '1 month - 1 day')) ;
+
+						for v_obra_social in select nro_obra_social from obra_social LOOP
+							insert into liquidacion_cabecera(nro_obra_social,desde,hasta,total) values (nro_obra_social,v_desde,v_hasta,0);
+						end loop;
+
+
+
+						-- aca se acomoda cada turno correspondiente al mes y a la liquidacion cabecera y se va añadiendo a liquidacion detalle con los
+						-- datos del turno y el numero de liquidacion cabecera
+						for v_cabecera in select * from liquidacion_cabecera LOOP
+							if v_cabecera.monto = 0 then 
+								for	v_turno in select * from turno LOOP
+
+									v_turno_mes := select extract(month from v_turno.fecha) ;
+									v_turno_año := select extract(year from v_turno.fecha) ;
+									v_cabecera_mes := select extract(month from v_cabecera.desde);
+									v_cabecera_año := select extract(year from v_cabecera.desde);
+									v_paciente := (select * from paciente where nro_paciente=v_turno.nro_paciente);
+									v_medico := (select * from medique where dni_medique=v_turno.dni_medique);
+									fecha_turno = select date(v_turno.fecha);
+
+									if v_cabecera.nro_obra_social = v_turno.nro_obra_social_consulta and v_cabecera_mes = v_turno_mes and v_cabecera_año=v_turno_año 
+									then 
+										insert into liquidacion_detalle values(v_cabecera.nro_liquidacion,fecha_turno, v_turno.nro_afiliade_consulta, v_paciente.dni_paciente, 
+											v_paciente.nombre, v_paciente.apellido, v_turno.dni_medique,  v_medico.nombre, v_medico.apellido, v_medico.especialidad, v_turno.monto_obra_social);
+										v_cabecera.total:= v_cabecera.total + v_turno.monto_obra_social;
+										
+
+									end if;
+								end LOOP;
+							end if;
+						end LOOP;
+					return new;
+				end;
+				$$ LANGUAGE plpgsql;
+
+
+
+
+
+
+	
+	`)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+
+}
+
+----
+
+
+4. *Procedure  cancelacion de turnos*
+
+[source , go]
+----
+create or replace function cancelarTurno(dniMedico int, f_desde date,f_hasta date) returns int as $$
+	declare
+	turnos turno%rowtype;
+	info_medico medique%rowtype;
+	info_paciente paciente%rowtype;
+	turnosPospuestos int ;
+	begin
+	
+	select count(*) into turnosPospuestos from turno t where t.fecha>=f_desde and t.fecha<=f_hasta and t.dni_medique=dniMedico;
+	perform * from medique where medique.dni_medique = dniMedico;
+	if not found then
+	raise  'dni de medico no encontrado';
+	end if ;  
+	if turnosPospuestos !=0 then
+	   for turnos in select * from turno t where t.fecha>=f_desde and t.fecha<=f_hasta and t.dni_medique=dniMedico loop
+	    select * into info_paciente from paciente p where p.nro_paciente=turnos.nro_paciente;
+	    select * into info_medico from medique m where m.dni_medique=turnos.dni_medique;
+	    insert into reprogramacion values (turnos.nro_turno,info_paciente.nombre,info_paciente.apellido,	
+			info_paciente.telefono,info_paciente.email,info_medico.nombre,info_medico.apellido,'reprogramado');
+	    update turno t set  estado ='cancelado' where t.fecha= turnos.fecha and t.dni_medique= turnos.dni_medique and
+	          t.nro_paciente=turnos.nro_paciente and t.nro_turno=turnos.nro_turno;
+		end loop;
+		end if;
+	return turnosPospuestos;
+	end;
+	$$ language plpgsql;
+----
+
+
+
+4. *Procedure y triggers cancelacion de turnos*
+
+[source , go]
+
+----
+create or replace function emailAsuntoCancelado() returns void as $$
+	declare 
+	nroPaciente int;
+	info_paciente paciente%rowtype;
+	info_medico turno%rowtype;
+	begin
+	select * into info_medico from turno t , reprogramacion r where t.nro_turno=new.nro_turno;
+	select nro_paciente t into nroPaciente from turno t , reprogramacion r where t.nro_turno=new.nro_turno;
+	select * into info_paciente from paciente p where p.nro_paciente=nroPaciente;
+	insert  into envio_email (f_generacion,email_paciente,asunto,cuerpo,f_envio,estado) values(now(),info_paciente.email,
+		'cancelacion de turno ','',null,'pendiente'); 
+	
+	end;
+	$$ language plpgsql;
+		
+	create trigger emailCancelado
+	after insert on reprogramacion
+	for each row
+	execute procedure emailAsuntoCancelado()
+
+
+----
+
+
+
+5. *Cargar turno disponibles*
+
+[source , go]
+
+----
+create or replace function generarTurnos(año int, mes int) returns boolean as $$
+	declare
+	dni_medico int;
+	fecha_inicio timestamp;
+	fecha_final timestamp;
+	dia_que_trabaja int;
+	numero_consultorio int;
+	intervalo interval;
+	cant_horas_que_trabaja int;
+	agenda_particular agenda%ROWTYPE;
+	valor int;
+	fecha_para_verificar timestamp;
+	horario time;	
+			
+	begin
+	fecha_inicio := make_timestamp(año,mes,1,0,0,0);
+	fecha_final := fecha_inicio + '1 months';
+	valor := 0.5;
+	
+	-- Verifico que no haya turnos con la fecha pasada por parametro
+
+	if exists (select fecha from turno where (select extract (year from (turno.fecha))) = año and (select extract (month from (turno.fecha))) = mes) then
+		return False;
+	else
+				
+	-- Recorro las agendas particulares para generar los turnos
+			
+	for agenda_particular in select * from agenda LOOP
+		fecha_para_verificar:= fecha_inicio + agenda_particular.hora_desde;
+		horario:=agenda_particular.hora_desde;
+		-- Voy recorriendo todos los dias del mes viendo que dias trabaja
+				 
+		while fecha_para_verificar < fecha_final loop
+			horario:= agenda_particular.hora_desde;
+			if  (select extract ( dow from  fecha_para_verificar) = agenda_particular.dia) then
+				
+			-- Dentro del dia, generos todos los turnos posibles
+						
+				while horario <  agenda_particular.hora_hasta loop
+					insert into turno values (DEFAULT,fecha_para_verificar,agenda_particular.nro_consultorio,agenda_particular.dni_medique,NULL,NULL,NULL,NULL,NULL,NULL,'disponible');
+					fecha_para_verificar := fecha_para_verificar + agenda_particular.duracion_turno;
+					raise notice '%',fecha_para_verificar;
+					horario:= horario+agenda_particular.duracion_turno;
+				end loop;
+			end if;
+		fecha_para_verificar := fecha_para_verificar + interval '1 day';
+		
+		end loop;
+	end loop;
+	return True;
+	end if;
+	end;
+	$$ LANGUAGE plpgsql;`
+ 
+
+----
